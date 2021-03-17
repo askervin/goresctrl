@@ -15,7 +15,6 @@
 package cgroups
 
 import (
-	"flag"
 	"path"
 	"path/filepath"
 )
@@ -73,13 +72,4 @@ func SetV2Dir(dir string) {
 	} else {
 		v2Dir = path.Join(mountDir, v2Dir)
 	}
-}
-
-func init() {
-	flag.StringVar(&mountDir, "cgroup-mount", mountDir,
-		"directory under which cgroup v1 controllers are mounted")
-	flag.StringVar(&v2Dir, "cgroup-v2-dir",
-		v2Dir, "cgroup v2 unified mount directory")
-	flag.StringVar(&KubeletRoot, "kubelet-cgroup-root", KubeletRoot,
-		"--cgroup-root options the kubelet is running with")
 }
