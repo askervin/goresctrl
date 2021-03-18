@@ -16,8 +16,6 @@ package cgroups
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
 	"strconv"
 	"strings"
 
@@ -147,9 +145,9 @@ type devMajMin struct {
 }
 
 // ResetBlkioParameters adds new, changes existing and removes missing blockIO parameters in cgroupsDir
-func ResetBlkioParameters(cntnrDir string, blockIO OciBlockIOParameters) error {
+func ResetBlkioParameters(groupDir string, blockIO OciBlockIOParameters) error {
 	var errors *multierror.Error
-	oldBlockIO, getErr := GetBlkioParameters(cntnrDir)
+	oldBlockIO, getErr := GetBlkioParameters(groupDir)
 	errors = multierror.Append(errors, getErr)
 	newBlockIO := NewOciBlockIOParameters()
 	newBlockIO.Weight = blockIO.Weight
@@ -169,7 +167,7 @@ func ResetBlkioParameters(cntnrDir string, blockIO OciBlockIOParameters) error {
 	newBlockIO.ThrottleWriteBpsDevice = resetDevRates(oldBlockIO.ThrottleWriteBpsDevice, blockIO.ThrottleWriteBpsDevice)
 	newBlockIO.ThrottleReadIOPSDevice = resetDevRates(oldBlockIO.ThrottleReadIOPSDevice, blockIO.ThrottleReadIOPSDevice)
 	newBlockIO.ThrottleWriteIOPSDevice = resetDevRates(oldBlockIO.ThrottleWriteIOPSDevice, blockIO.ThrottleWriteIOPSDevice)
-	errors = multierror.Append(errors, SetBlkioParameters(cntnrDir, newBlockIO))
+	errors = multierror.Append(errors, SetBlkioParameters(groupDir, newBlockIO))
 	return errors.ErrorOrNil()
 }
 
@@ -193,23 +191,6 @@ func resetDevRates(old, wanted []OciDeviceRate) []OciDeviceRate {
 func GetBlkioParameters(group string) (OciBlockIOParameters, error) {
 	var errors *multierror.Error
 	blockIO := NewOciBlockIOParameters()
-
-	// for _, wf := range blkioWeightFiles {
-	// 	if weight, err := BlockIO.Read(wf)
-	// }
-
-	// content, err := readFromFileInDir(cgroupsDir, blkioWeightFiles)
-	// if err == nil {
-	// 	weight, err := strconv.ParseInt(strings.TrimSuffix(content, "\n"), 10, 64)
-	// 	if err == nil {
-	// 		blockIO.Weight = weight
-	// 	} else {
-	// 		errors = multierror.Append(errors, fmt.Errorf("parsing weight from %#v failed: %w", content, err))
-	// 	}
-	// } else {
-	// 	errors = multierror.Append(errors, err)
-	// }
-
 	errors = multierror.Append(errors, readInt64(group, blkioWeightFiles, &blockIO.Weight))
 	errors = multierror.Append(errors, readOciDeviceParameters(group, blkioWeightDeviceFiles, &blockIO.WeightDevice))
 	errors = multierror.Append(errors, readOciDeviceParameters(group, blkioThrottleReadBpsFiles, &blockIO.ThrottleReadBpsDevice))
@@ -220,8 +201,8 @@ func GetBlkioParameters(group string) (OciBlockIOParameters, error) {
 }
 
 // readInt64 parses int64 from a cgroups entry
-func readInt64(cntnrDir string, filenames []string, rv *int64) error {
-	contents, err := readFirstFile(cntnrDir, filenames)
+func readInt64(groupDir string, filenames []string, rv *int64) error {
+	contents, err := readFirstFile(groupDir, filenames)
 	if err != nil {
 		return err
 	}
@@ -233,9 +214,9 @@ func readInt64(cntnrDir string, filenames []string, rv *int64) error {
 }
 
 // readOciDeviceParameters parses device lines used for weights and throttling rates
-func readOciDeviceParameters(cntnrDir string, filenames []string, params OciDeviceParameters) error {
+func readOciDeviceParameters(groupDir string, filenames []string, params OciDeviceParameters) error {
 	var errors *multierror.Error
-	contents, err := readFirstFile(cntnrDir, filenames)
+	contents, err := readFirstFile(groupDir, filenames)
 	if err != nil {
 		return err
 	}
@@ -268,13 +249,11 @@ func readOciDeviceParameters(cntnrDir string, filenames []string, params OciDevi
 }
 
 // readFirstFile returns contents of the first successfully read entry.
-func readFirstFile(cntnrDir string, filenames []string) (string, error) {
+func readFirstFile(groupDir string, filenames []string) (string, error) {
 	var errors *multierror.Error
 	// If reading all the files fails, return list of read errors.
 	for _, filename := range filenames {
-		// filepath := filepath.Join(cntnrDir, entry)
-		// content, err := currentPlatform.readFromFile(filepath)
-		content, err := Blkio.Group(cntnrDir).Read(filename)
+		content, err := Blkio.Group(groupDir).Read(filename)
 		if err == nil {
 			return content, nil
 		}
@@ -311,20 +290,12 @@ func SetBlkioParameters(group string, blockIO OciBlockIOParameters) error {
 	return errors.ErrorOrNil()
 }
 
-// writeDevValueToFileInDir writes MAJOR:MINOR VALUE to the first existing file under cntnrDir
-// func writeDevValueToFileInDir(cntnrDir string, filenames []string, major, minor, value int64) error {
-// 	content := fmt.Sprintf("%d:%d %d", major, minor, value)
-// 	return writeFirstFile(cntnrDir, filenames, content)
-// }
-
-// writeFirstFile writes content to the first existing file in the list under cntnrDir.
-func writeFirstFile(cntnrDir string, filenames []string, format string, args ...interface{}) error {
+// writeFirstFile writes content to the first existing file in the list under groupDir.
+func writeFirstFile(groupDir string, filenames []string, format string, args ...interface{}) error {
 	var errors *multierror.Error
 	// Returns list of errors from writes, list of single error due to all filenames missing or nil on success.
 	for _, filename := range filenames {
-		// filepath := filepath.Join(containerDir, filename)
-		// err := currentPlatform.writeToFile(filepath, content)
-		if err := Blkio.Group(cntnrDir).Write(filename, format, args...); err != nil {
+		if err := Blkio.Group(groupDir).Write(filename, format, args...); err != nil {
 			errors = multierror.Append(errors, err)
 			continue
 		}
@@ -336,33 +307,4 @@ func writeFirstFile(cntnrDir string, filenames []string, format string, args ...
 		return fmt.Errorf("writing all files %v failed, errors: %w, content %q" + format, filenames, data)
 	}
 	return nil
-}
-
-// platformInterface includes functions that access the system. Enables mocking the platform.
-type platformInterface interface {
-	readFromFile(filename string) (string, error)
-	writeToFile(filename string, content string) error
-}
-
-// defaultPlatform versions of platformInterface functions access the underlying system.
-type defaultPlatform struct{}
-
-// currentPlatform defines which platformInterface is used: defaultPlatform or a mock, for instance.
-var currentPlatform platformInterface = defaultPlatform{}
-
-// readFromFile returns file contents as a string.
-func (dpm defaultPlatform) readFromFile(filename string) (string, error) {
-	content, err := ioutil.ReadFile(filename)
-	return string(content), err
-}
-
-// writeToFile writes content to an existing file.
-func (dpm defaultPlatform) writeToFile(filename string, content string) error {
-	f, err := os.OpenFile(filename, os.O_WRONLY, 0666)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = fmt.Fprintf(f, content)
-	return err
 }

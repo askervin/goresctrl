@@ -33,13 +33,10 @@ import (
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/intel/goresctrl/pkg/cgroups"
-	goresctrllog "github.com/intel/goresctrl/pkg/log"
+	grclog "github.com/intel/goresctrl/pkg/log"
 )
 
 const (
-	// ConfigModuleName is the configuration section of blockio class definitions
-	ConfigModuleName = "blockio"
-
 	// sysfsBlockDeviceIOSchedulerPaths expands (with glob) to block device scheduler files.
 	// If modified, check how to parse device node from expanded paths.
 	sysfsBlockDeviceIOSchedulerPaths = "/sys/block/*/queue/scheduler"
@@ -67,7 +64,7 @@ type BlockDeviceInfo struct {
 }
 
 // Our logger instance.
-var log goresctrllog.Logger = goresctrllog.NewLoggerWrapper(stdlog.New(os.Stderr, "[ blockio ] ", 0))
+var log grclog.Logger = goresctrllog.NewLoggerWrapper(stdlog.New(os.Stderr, "[ blockio ] ", 0))
 
 // staticOciBlockIO connects user-defined block I/O classes to
 // corresponding OCI BlockIO parameters. "Static" means that
@@ -81,6 +78,14 @@ var staticOciBlockIO = map[string]cgroups.OciBlockIOParameters{}
 // sysfsBlockDeviceIOSchedulerPaths) of device nodes:
 // {"/dev/sda": "bfq"}
 var currentIOSchedulers map[string]string
+
+// SetLogger sets the logger instance to be used by the package.
+func SetLogger(l grclog.Logger) {
+	log = l
+	if rdt != nil {
+		rdt.setLogger(l)
+	}
+}
 
 // GetClasses returns block I/O class names and associated parameters in sorted slice.
 func GetClasses() []*Class {
@@ -123,23 +128,17 @@ func UpdateConfig(opt *Config, ignoreErrors bool) error {
 }
 
 // SetContainerClass assigns a to a blockio class.
-// cntnrDir is the cgroup directory of the container without
-// mountpoint and controller (blkio) directory:
+// cntnrGrp is the cgroup directory of the container without
+// mountpoint and controller (blkio) directories. For example:
 // "/kubepods/burstable/POD_ID/CONTAINER_ID"
-func SetContainerClass(cntnrDir string, class string) error {
+func SetContainerClass(cntnrGrp string, class string) error {
 	ociBlockIO, classIsStatic := staticOciBlockIO[class]
 	if !classIsStatic {
 		return blockioError("no OCI BlockIO parameters for class %#v", class)
 	}
-	// blkioCgroupRoot := cgroups.Blkio.Path()
-	// containerCgroupDir := c.GetCgroupDir()
-	// if containerCgroupDir == "" {
-	// 	return blockioError("failed to find cgroup directory for container %s under %#v, container id %#v", c.PrettyName(), blkioCgroupRoot, c.GetID())
-	// }
-	// containerCgroupPath := filepath.Join(blkioCgroupRoot, containerCgroupDir)
-	err := cgroups.ResetBlkioParameters(cntnrDir, ociBlockIO)
+	err := cgroups.ResetBlkioParameters(cntnrGrp, ociBlockIO)
 	if err != nil {
-		return blockioError("assigning container in cgroup %q to class %#v failed: %w", cntnrDir, class, err)
+		return blockioError("assigning container in cgroup %q to class %#v failed: %w", cntnrGrp, class, err)
 	}
 	return nil
 }
@@ -155,7 +154,7 @@ func getCurrentIOSchedulers() (map[string]string, error) {
 		devName := strings.SplitN(schedulerFile, "/", 5)[3]
 		schedulerDataB, err := ioutil.ReadFile(schedulerFile)
 		if err != nil {
-			// A block device may be disconnected. Continue without error.
+			// A block device may be disconnected.
 			log.Error("failed to read current IO scheduler %#v: %v\n", schedulerFile, err)
 			continue
 		}
@@ -171,7 +170,8 @@ func getCurrentIOSchedulers() (map[string]string, error) {
 			}
 		}
 		if currentScheduler == "" {
-			return ios, blockioError("could not parse current scheduler in %#v\n", schedulerFile)
+			log.Error("could not parse current scheduler in %#v\n", schedulerFile)
+			continue
 		}
 
 		ios["/dev/"+devName] = currentScheduler
