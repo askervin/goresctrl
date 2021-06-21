@@ -158,7 +158,7 @@ func SetLogger(l grclog.Logger) {
 // SetConfigFromFile reads and applies blockio configuration from the
 // filesystem.
 func SetConfigFromFile(filename string, force bool) error {
-	if data, err := ioutil.ReadFile(filename); err == nil {
+	if data, err := ioutil.ReadFile(filepath.Clean(filename)); err == nil {
 		if err = SetConfigFromData(data, force); err != nil {
 			return fmt.Errorf("failed to set configuration from file %q: %s", filename, err)
 		}
