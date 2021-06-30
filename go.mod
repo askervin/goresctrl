@@ -3,7 +3,6 @@ module github.com/intel/goresctrl
 go 1.14
 
 require (
-	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.6
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -15,4 +14,13 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	k8s.io/apimachinery v0.21.2
 	sigs.k8s.io/yaml v1.2.0
+)
+
+replace (
+	cloud.google.com/go/storage v1.10.0 => cloud.google.com/go/storage v1.16.0
+	github.com/onsi/gomega v1.7.0 => github.com/onsi/gomega v1.13.0
+	github.com/onsi/gomega v1.7.1 => github.com/onsi/gomega v1.13.0
+	google.golang.org/appengine v1.4.0 => google.golang.org/appengine v1.6.7
+	google.golang.org/appengine v1.5.0 => google.golang.org/appengine v1.6.7
+	google.golang.org/grpc v1.19.0 => google.golang.org/grpc v1.39.0
 )
