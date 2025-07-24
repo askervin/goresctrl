@@ -26,7 +26,8 @@ import (
 
 const (
 	// Unknown represents an unknown id.
-	Unknown ID = -1
+	Unknown  ID = -1
+	maxCpuID    = 1 << 20
 )
 
 // ID is nn integer id, used to identify packages, CPUs, nodes, etc.
@@ -55,6 +56,66 @@ func NewIDSetFromIntSlice(ids ...int) IDSet {
 	}
 
 	return s
+}
+
+// NewIDSetFromString creates new unordered set from string in listset syntax.
+func NewIDSetFromString(str string) (IDSet, error) {
+	s := NewIDSet()
+	if str == "" {
+		return s, nil
+	}
+	ints, err := parseListSet(str, 0, maxCpuID)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ints {
+		s.Add(ID(id))
+	}
+	return s, nil
+}
+
+// parseListSet parses "list set" syntax ("0,61-63,2") into a list ([0, 61, 62, 63, 2]).
+func parseListSet(listSet string, minValue, maxValue int) ([]int, error) {
+	var result []int
+	parts := strings.Split(listSet, ",")
+	for _, part := range parts {
+		switch {
+		case part == "":
+			continue
+		case strings.Contains(part, "-"):
+			rangeParts := strings.Split(part, "-")
+			if len(rangeParts) != 2 {
+				return nil, fmt.Errorf("invalid range: %s", part)
+			}
+			start, err := strconv.Atoi(rangeParts[0])
+			if err != nil {
+				return nil, err
+			}
+			end, err := strconv.Atoi(rangeParts[1])
+			if err != nil {
+				return nil, err
+			}
+			if start > end {
+				return nil, fmt.Errorf("invalid range %s: start > end", part)
+			}
+			if start < minValue || end > maxValue {
+				return nil, fmt.Errorf("invalid range %s: out of range %d-%d", part, minValue, maxValue)
+			}
+			for i := start; i <= end; i++ {
+				result = append(result, i)
+			}
+		default:
+			num, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, err
+			}
+			if num < minValue || num > maxValue {
+				return nil, fmt.Errorf("invalid value %d: out of range %d-%d", num, minValue, maxValue)
+			}
+			result = append(result, num)
+		}
+	}
+	return result, nil
 }
 
 // Clone returns a copy of this IdSet.
